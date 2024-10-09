@@ -8,14 +8,14 @@ Here we will retrain existing model for image classification Inception V3. Weigh
 https://storage.googleapis.com/mledu-datasets/inception_v3_weights_tf_dim_ordering_tf_kernels_notop.h5  
 We added 2 dense layers, after parameters tuning hwe have layer1 736 units, layer2 128 units, learning rate 1e-5.
 Since we have small amout of data, we will finalize training with validation data. After 100 epochs we have:    
-Train accuracy  
-Validation accuracy  
+Train accuracy  1.00  
+Validation accuracy 0.75   
 Test accuracy 0.858  
   
 After we added image augmentation we have:  
-Train accuracy:  
-Validation accuracy:  
-Test accuracy:  
+Train accuracy:  1.00  
+Validation accuracy: 0.75  
+Test accuracy: 0.879  
 ========================= Custom model =======================================
 
 ========================= K-fold =============================================
