@@ -19,11 +19,10 @@ test_generator = test_datagen.flow_from_directory(TEST_DIR,
                               batch_size= 1)
 
 preds = savedModel.predict(test_generator).flatten()
-preds = np.round(preds)
+preds = np.array(["dirty" if label>=0.5 else "cleaned" for label in preds])
 filenames=test_generator.filenames
 
 results=pd.DataFrame({"id":filenames,
                       "label":preds})
-results.replace({"label": {0: "cleaned", 1: "dirty"}}, inplace=True)
 results["id"] = results["id"].apply(lambda x: x[5:-4])
 results.to_csv("submission.csv",index=False)

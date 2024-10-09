@@ -88,10 +88,10 @@ history = model.fit(train_generator,
                     verbose=1,
                     validation_data=validation_generator)
 
-#model.fit(validation_generator,
-#                    epochs=20,
-#                    verbose=1,
-#                    )
+model.fit(validation_generator,
+                    epochs=20,
+                    verbose=1,
+                    )
 
 
 # Plot utility
