@@ -16,3 +16,6 @@ After we added image augmentation we have:
 Train accuracy:  
 Validation accuracy:  
 Test accuracy:  
+========================= Custom model =======================================
+
+========================= K-fold =============================================
