@@ -1,5 +1,4 @@
-from tensorflow.keras import layers
-from tensorflow.keras.applications.inception_v3 import InceptionV3
+import tensorflow as tf
 from tensorflow.keras.optimizers import RMSprop
 from tensorflow.keras import Model
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
@@ -23,17 +22,18 @@ def train_val_generators(TRAINING_DIR, VALIDATION_DIR):
     train_generator, validation_generator - tuple containing the generators
   """
   train_datagen = ImageDataGenerator( rescale = 1.0/255,
-                                      rotation_range=40,
+                                      rotation_range=180,
                                       width_shift_range=0.2,
                                       height_shift_range=0.2,
                                       shear_range=0.2,
                                       zoom_range=0.2,
                                       horizontal_flip=True,
+                                      vertical_flip = True,
                                       fill_mode=('nearest'),
                                       )
   train_generator = train_datagen.flow_from_directory(
                                                       directory=TRAINING_DIR,
-                                                      batch_size=32,
+                                                      batch_size=20,
                                                       class_mode="binary",
                                                       target_size=(TARGET_SIZE, TARGET_SIZE),
                                                       color_mode="rgb",
@@ -53,31 +53,20 @@ def train_val_generators(TRAINING_DIR, VALIDATION_DIR):
 train_generator, validation_generator = train_val_generators(TRAINING_DIR, VALIDATION_DIR)
 print(validation_generator.class_indices)
 
-# Loading pretrained model
-pre_trained_model = InceptionV3(input_shape = (TARGET_SIZE, TARGET_SIZE, 3),
-                                include_top = False,
-                                weights = None)
+model = tf.keras.models.Sequential([
+    tf.keras.layers.Conv2D(12, (2,2), activation='relu', input_shape=(TARGET_SIZE, TARGET_SIZE, 3)),
+    tf.keras.layers.MaxPooling2D(2,2),
+    tf.keras.layers.Conv2D(26, (3,3), activation='relu'),
+    tf.keras.layers.MaxPooling2D(2,2),
+    tf.keras.layers.Conv2D(20, (2,2), activation='relu'),
+    tf.keras.layers.MaxPooling2D(2,2),
+    tf.keras.layers.Flatten(),
+    tf.keras.layers.Dropout(0.3),
+    tf.keras.layers.Dense(480, activation='relu'),
+    tf.keras.layers.Dense(1, activation='sigmoid')
+])
 
-pre_trained_model.load_weights(local_weights_file)
-# Making sure trained layers will stay intact
-for layer in pre_trained_model.layers:
-  layer.trainable = False
-
-# Last trained layer we will use
-last_layer = pre_trained_model.get_layer('mixed7')
-last_output = last_layer.output
-
-# Add new layers to the model
-x = layers.Flatten()(last_output)
-x = layers.Dense(736, activation='relu')(x)
-x = layers.Dropout(0.2)(x)
-x = layers.Dense(128, activation='relu')(x)
-x = layers.Dense  (1, activation='sigmoid')(x)
-
-# Append the dense network to the base model
-model = Model(pre_trained_model.input, x)
-
-model.compile(optimizer=RMSprop(learning_rate=1e-05),
+model.compile(optimizer=RMSprop(learning_rate=1e-04),
                 loss="binary_crossentropy",
                 metrics=["accuracy"])
 

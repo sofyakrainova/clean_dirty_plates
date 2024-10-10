@@ -1,14 +1,12 @@
 import tensorflow as tf
 import keras_tuner as kt
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.applications.inception_v3 import InceptionV3
 
 BATCH_SIZE = 20
 TARGET_SIZE = 250
 TRAINING_DIR = "../../Python scripts/Kaggle_data/plates/train"
 VALIDATION_DIR = "../../Python scripts/Kaggle_data/plates/validation"
 EPOCHS = 100
-local_weights_file = "inception_v3_weights_tf_dim_ordering_tf_kernels_notop.h5"
 
 
 def train_val_generators(TRAINING_DIR, VALIDATION_DIR):
@@ -23,7 +21,13 @@ def train_val_generators(TRAINING_DIR, VALIDATION_DIR):
     train_generator, validation_generator - tuple containing the generators
   """
   train_datagen = ImageDataGenerator( rescale = 1.0/255.,
-
+                                      rotation_range=40,
+                                      width_shift_range=0.2,
+                                      height_shift_range=0.2,
+                                      shear_range=0.2,
+                                      zoom_range=0.2,
+                                      horizontal_flip=True,
+                                      fill_mode=('nearest'),
                                       )
   train_generator = train_datagen.flow_from_directory(directory=TRAINING_DIR,
                                                       batch_size=BATCH_SIZE,
@@ -44,38 +48,38 @@ def train_val_generators(TRAINING_DIR, VALIDATION_DIR):
 
 train_generator, validation_generator = train_val_generators(TRAINING_DIR, VALIDATION_DIR)
 
-pre_trained_model = InceptionV3(input_shape = (TARGET_SIZE, TARGET_SIZE, 3),
-                                include_top = False,
-                                weights = None)
-
-pre_trained_model.load_weights(local_weights_file)
-# Making sure trained layers will stay intact
-for layer in pre_trained_model.layers:
-  layer.trainable = False
-
-# Last trained layer we will use
-last_layer = pre_trained_model.get_layer('mixed7')
-last_output = last_layer.output
-
 def model_builder(hp):
-    x = tf.keras.layers.Flatten()(last_output)
-    units1 = hp.Int('units1', min_value=32, max_value=1024, step=32)
-    x = tf.keras.layers.Dense(units1, activation='relu')(x)
-    x = tf.keras.layers.Dropout(0.2)(x)
-    units2 = hp.Int('units2', min_value=32, max_value=1024, step=32)
-    x = tf.keras.layers.Dense(units2, activation='relu')(x)
-    x = tf.keras.layers.Dense(1, activation='sigmoid')(x)
+  model = tf.keras.Sequential()
+  filters1 = hp.Int('filters1', min_value=8, max_value=32, step=2)
+  kernel1 = hp.Int('kernel1', min_value=2, max_value=5, step=1)
+  model.add(tf.keras.layers.Conv2D(filters1,
+                                   (kernel1, kernel1),
+                                   activation='relu',
+                                   input_shape=(TARGET_SIZE, TARGET_SIZE, 3)),)
+  model.add(tf.keras.layers.MaxPooling2D(2,2))
+  filters2 = hp.Int('filters2', min_value=8, max_value=32, step=2)
+  kernel2 = hp.Int('kernel2', min_value=2, max_value=5, step=1)
+  model.add(tf.keras.layers.Conv2D(filters2,
+                                   (kernel2,kernel2),
+                                   activation='relu'))
+  model.add(tf.keras.layers.MaxPooling2D(2,2),)
+  filters3 = hp.Int('filters3', min_value=8, max_value=64, step=4)
+  kernel3 = hp.Int('kernel3', min_value=2, max_value=5, step=1)
+  model.add(tf.keras.layers.Conv2D(filters3, (kernel3,kernel3), activation='relu'),)
+  model.add(tf.keras.layers.MaxPooling2D(2,2),)
+  model.add(tf.keras.layers.Flatten())
+  units = hp.Int('units', min_value=32, max_value=512, step=32)
+  model.add(tf.keras.layers.Dense(units, activation='relu'))
+  model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
 
-    # Append the dense network to the base model
-    model = tf.keras.Model(pre_trained_model.input, x)
-
-    # Tune the learning rate for the optimizer
-    hp_learning_rate = hp.Choice('learning_rate', values=[1e-2, 1e-3, 1e-4, 1e-5])
-    optimizer = tf.keras.optimizers.RMSprop(learning_rate=hp_learning_rate)
-    model.compile(optimizer=optimizer,
+  # Tune the learning rate for the optimizer
+  hp_learning_rate = hp.Choice('learning_rate', values=[1e-2, 1e-3, 1e-4, 1e-5])
+  optimizer = tf.keras.optimizers.RMSprop(learning_rate=hp_learning_rate)
+  model.compile(optimizer=optimizer,
                 loss="binary_crossentropy",
                 metrics=["accuracy"])
-    return model
+
+  return model
 
 tuner = kt.Hyperband(model_builder,
                      max_epochs=20,
@@ -92,7 +96,12 @@ tuner.search(train_generator,
 best_hps=tuner.get_best_hyperparameters(num_trials=1)[0]
 print(f"""
 The hyperparameter search is complete.\n
+ The optimal filters1 is {best_hps.get('filters1')}. \n 
+ The optimal kernel1 is {best_hps.get('kernel1')}. \n 
+ The optimal filters2 is {best_hps.get('filters2')}. \n 
+ The optimal kernel2 is {best_hps.get('kernel2')}. \n 
+ The optimal filters3 is {best_hps.get('filters3')}. \n 
+ The optimal kernel3 is {best_hps.get('kernel3')}. \n 
  The optimal learning rate is {best_hps.get('learning_rate')}. \n
- Number units1 {best_hps.get('units1')} \n
- Number units2 {best_hps.get('units2')} \n 
+ Number units {best_hps.get('units')} \n
  """)
