@@ -17,5 +17,9 @@ Train accuracy:  1.00
 Validation accuracy: 0.75  
 Test accuracy: 0.879  
 ========================= Custom model =======================================
-
-========================= K-fold =============================================
+Custom model with CNN does not perform good, so I will not post it alone. Using K-fold parameter tunning we have these params:
+filters1 28, kernels1 2, filters2 24, kernels2 3, filters3 20, kernels3 3, units 320, learninng rate 0.01   
+performance achieved so far after 100 epochs:  
+Train 0.697  
+Validation (across 3 k-folds): 0.376  
+Test 0.653    
