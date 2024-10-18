@@ -1,102 +1,131 @@
+import keras.src.layers
 import tensorflow as tf
-from tensorflow.keras.optimizers import RMSprop
-from tensorflow.keras import Model
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from sklearn.model_selection import KFold
 import matplotlib.pyplot as plt
+import os
+import numpy as np
+import pandas as pd
 
 TARGET_SIZE = 250
 EPOCHS = 100
-TRAINING_DIR = "../../Python scripts/Kaggle_data/plates/train"
-VALIDATION_DIR = "../../Python scripts/Kaggle_data/plates/validation"
-local_weights_file = "inception_v3_weights_tf_dim_ordering_tf_kernels_notop.h5"
+all_train = "../../Python scripts/Kaggle_data/plates/all_train"
+filenames = os.listdir(all_train)
 
-def train_val_generators(TRAINING_DIR, VALIDATION_DIR):
-  """
-  Creates the training and validation data generators
+image_paths = np.array([os.path.join(all_train, f) for f in filenames if os.path.isfile(os.path.join(all_train, f))])
+labels = np.array(["dirty", "clean"]*20)
 
-  Args:
-    TRAINING_DIR (string): directory path containing the training images
-    VALIDATION_DIR (string): directory path containing the testing/validation images
+# Number of folds for cross-validation
+k_folds = 3
 
-  Returns:
-    train_generator, validation_generator - tuple containing the generators
-  """
-  train_datagen = ImageDataGenerator( rescale = 1.0/255,
-                                      rotation_range=180,
-                                      width_shift_range=0.2,
-                                      height_shift_range=0.2,
-                                      shear_range=0.2,
-                                      zoom_range=0.2,
-                                      horizontal_flip=True,
-                                      vertical_flip = True,
-                                      fill_mode=('nearest'),
-                                      )
-  train_generator = train_datagen.flow_from_directory(
-                                                      directory=TRAINING_DIR,
-                                                      batch_size=20,
-                                                      class_mode="binary",
-                                                      target_size=(TARGET_SIZE, TARGET_SIZE),
-                                                      color_mode="rgb",
-                                                      shuffle=True,
-                                                      )
+# Data augmentation setup using ImageDataGenerator
+train_gen = ImageDataGenerator(
+    rescale=1.0/255,
+    rotation_range=20,
+    width_shift_range=0.2,
+    height_shift_range=0.2,
+    shear_range=0.2,
+    zoom_range=0.2,
+    horizontal_flip=True,
+    fill_mode='nearest'
+)
 
-  validation_datagen = ImageDataGenerator( rescale = 1.0/255. )
-  validation_generator = validation_datagen.flow_from_directory(
-                                                                directory=VALIDATION_DIR,
-                                                                batch_size=8,
-                                                                class_mode="binary",
-                                                                target_size=(TARGET_SIZE, TARGET_SIZE),
-                                                                color_mode="rgb",
-                                                                )
-  return train_generator, validation_generator
+validation_gen = ImageDataGenerator(rescale=1.0/255)
 
-train_generator, validation_generator = train_val_generators(TRAINING_DIR, VALIDATION_DIR)
-print(validation_generator.class_indices)
+def create_model():
+    model = tf.keras.Sequential([
+        tf.keras.layers.Input(shape=(TARGET_SIZE, TARGET_SIZE, 3)),
+        tf.keras.layers.Conv2D(28, (2, 2), activation='relu', ),
+        tf.keras.layers.MaxPooling2D(2, 2),
+        tf.keras.layers.Conv2D(24, (3, 3), activation='relu'),
+        tf.keras.layers.MaxPooling2D(2, 2),
+        tf.keras.layers.Conv2D(20, (3, 3), activation='relu'),
+        tf.keras.layers.MaxPooling2D(2, 2),
+        tf.keras.layers.Flatten(),
+        tf.keras.layers.Dense(320, activation='relu'),
+        tf.keras.layers.Dense(1, activation='sigmoid')  # Binary classification
+    ])
 
-model = tf.keras.models.Sequential([
-    tf.keras.layers.Conv2D(12, (2,2), activation='relu', input_shape=(TARGET_SIZE, TARGET_SIZE, 3)),
-    tf.keras.layers.MaxPooling2D(2,2),
-    tf.keras.layers.Conv2D(26, (3,3), activation='relu'),
-    tf.keras.layers.MaxPooling2D(2,2),
-    tf.keras.layers.Conv2D(20, (2,2), activation='relu'),
-    tf.keras.layers.MaxPooling2D(2,2),
-    tf.keras.layers.Flatten(),
-    tf.keras.layers.Dropout(0.3),
-    tf.keras.layers.Dense(480, activation='relu'),
-    tf.keras.layers.Dense(1, activation='sigmoid')
-])
+    optimizer = tf.keras.optimizers.RMSprop(learning_rate=0.01)
+    model.compile(optimizer=optimizer,
+                  loss="binary_crossentropy",
+                  metrics=["accuracy"])
+    return model
 
-model.compile(optimizer=RMSprop(learning_rate=1e-04),
-                loss="binary_crossentropy",
-                metrics=["accuracy"])
+def prepare_df(paths, labels, idx):
+    return pd.DataFrame({'filename': paths[idx], 'class': labels[idx]})
 
+# Initialize KFold cross-validation
+kf = KFold(n_splits=k_folds, shuffle=True, random_state=42, )
 
+# Array to store accuracy for each fold
+fold_accuracies = []
 
-history = model.fit(train_generator,
-                    epochs=EPOCHS,
-                    verbose=1,
-                    validation_data=validation_generator)
+# Iterate over each fold
+for fold_idx, (train_idx, val_idx) in enumerate(kf.split(image_paths)):
+    print(f"Training fold {fold_idx + 1}/{k_folds}")
+    # Split data into training and validation sets based on indices
+    train_df = prepare_df(image_paths, labels, train_idx)
+    valid_df = prepare_df(image_paths, labels, val_idx)
 
-model.fit(validation_generator,
-                    epochs=20,
-                    verbose=1,
-                    )
+    # Create train and validation generators
+    train_generator = train_gen.flow_from_dataframe(
+        dataframe=train_df,
+        x_col='filename',
+        y_col='class',
+        folder = all_train,
+        target_size=(TARGET_SIZE, TARGET_SIZE),
+        batch_size=32,
+        class_mode='binary'
+    )
 
+    val_generator = validation_gen.flow_from_dataframe(
+        dataframe=valid_df,
+        x_col='filename',
+        y_col='class',
+        folder=all_train,
+        target_size=(TARGET_SIZE, TARGET_SIZE),
+        batch_size=32,
+        class_mode='binary'
+    )
 
-# Plot utility
-def plot_graphs(history, string):
-  plt.plot(history.history[string])
-  plt.plot(history.history['val_'+string])
-  plt.grid()
-  plt.xlabel("Epochs")
-  plt.ylabel(string)
-  plt.legend([string, 'val_'+string])
-  plt.show()
+    # Create a fresh model for each fold
+    model = create_model()
 
-# Plot the accuracy and loss
-plot_graphs(history, "accuracy")
-plot_graphs(history, "loss")
+    # Train the model on this fold
+    history = model.fit(
+        train_generator,
+        validation_data=val_generator,
+        epochs=30
+    )
 
+    # Evaluate the model on the validation fold
+    val_loss, val_accuracy = model.evaluate(val_generator)
+    print(f"Fold {fold_idx + 1} - Validation Accuracy: {val_accuracy:.4f}")
+
+    # Store the accuracy for this fold
+    fold_accuracies.append(val_accuracy)
+
+# Compute the average accuracy across all folds
+average_accuracy = np.mean(fold_accuracies)
+print(f"Average Accuracy across {k_folds} folds: {average_accuracy:.4f}")
+
+all_df = prepare_df(image_paths, labels, np.arange(0, len(image_paths)))
+train_generator = train_gen.flow_from_dataframe(
+        dataframe=all_df,
+        x_col='filename',
+        y_col='class',
+        folder = all_train,
+        target_size=(TARGET_SIZE, TARGET_SIZE),
+        batch_size=32,
+        class_mode='binary'
+    )
+
+model.fit(
+        train_generator,
+        epochs=100)
+results = model.evaluate(train_generator)
+print("test loss, test acc:", results)
 
 # Save the weights
 model.save('trained_model.keras')
